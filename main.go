@@ -25,30 +25,17 @@ func findHeader(data []byte) ([]byte, error) {
 	return data[0 : idx-1], nil
 }
 
-func attachTemplates(t *template.Template, folder string) error {
-	return filepath.Walk(folder, func(p string, info os.FileInfo, err error) error {
-		if !strings.HasSuffix(p, ".yml") {
-			return nil
-		}
-		name := strings.TrimSuffix(p, ".yml")
-		data, err := ioutil.ReadFile(p)
-		if err != nil {
-			return err
-		}
-		_, err = t.New(name).Parse(string(data))
-		return err
-	})
-}
-
 func main() {
 	var output string
 	var verbose bool
 	var worldGroupName string
 	var wantWorldGroup bool
+	var selectedPipeline string
 	pflag.StringVar(&output, "output", "pipeline.generated.yaml", "Path to an output file for the generated pipeline")
 	pflag.BoolVar(&wantWorldGroup, "worldgroup", false, "Generate a group containing all resources and jobs")
 	pflag.StringVar(&worldGroupName, "worldgroup-name", "WORLD", "Name of the group that contains all jobs and resources")
 	pflag.BoolVar(&verbose, "verbose", false, "Verbose logging")
+	pflag.StringVar(&selectedPipeline, "pipeline", "", "Specify the name of the pipeline you want to generate")
 	pflag.Parse()
 	log := logrus.New()
 	if verbose {
@@ -61,7 +48,7 @@ func main() {
 	wg.Add(4)
 
 	go func() {
-		resources, err := loadResources("resources", log)
+		resources, err := loadResources("resources", selectedPipeline, log)
 		if err != nil {
 			log.WithError(err).Fatal("Failed to load resources")
 		}
@@ -70,7 +57,7 @@ func main() {
 	}()
 
 	go func() {
-		resources, err := loadResources("jobs", log)
+		resources, err := loadResources("jobs", selectedPipeline, log)
 		if err != nil {
 			log.WithError(err).Fatal("Failed to load jobs")
 		}
@@ -79,7 +66,7 @@ func main() {
 	}()
 
 	go func() {
-		resources, err := loadResources("resource_types", log)
+		resources, err := loadResources("resource_types", selectedPipeline, log)
 		if err != nil {
 			log.WithError(err).Fatal("Failed to load resource_types")
 		}
@@ -88,7 +75,7 @@ func main() {
 	}()
 
 	go func() {
-		resources, err := loadResources("groups", log)
+		resources, err := loadResources("groups", selectedPipeline, log)
 		if err != nil {
 			log.WithError(err).Fatal("Failed to load groups")
 		}
@@ -146,7 +133,7 @@ func generateWorldGroup(name string, p *Pipeline) Resource {
 	return r
 }
 
-func loadResources(path string, log *logrus.Logger) ([]Resource, error) {
+func loadResources(path string, pipeline string, log *logrus.Logger) ([]Resource, error) {
 	resources := make([]Resource, 0, 10)
 	if err := filepath.Walk(path, func(p string, info os.FileInfo, err error) error {
 		log.Infof("Processing %s", p)
@@ -165,12 +152,15 @@ func loadResources(path string, log *logrus.Logger) ([]Resource, error) {
 		}
 		if err := yaml.Unmarshal(header, &rc); err != nil {
 			log.Error(string(data))
-			return err
+			return fmt.Errorf("failed to unmarshal header of %s: %s", p, err)
 		}
 		var useName bool
 		if len(rc.Meta.Instances) == 0 && rc.Meta.Name != "" {
 			rc.Meta.Instances = []string{rc.Meta.Name}
 			useName = true
+		}
+		if !rc.isRelevantForPipeline(pipeline) {
+			return nil
 		}
 		for _, instance := range rc.Meta.Instances {
 			var output bytes.Buffer
@@ -191,23 +181,27 @@ func loadResources(path string, log *logrus.Logger) ([]Resource, error) {
 				}
 				return def
 			}
+			funcs["ite"] = func(condition bool, trueValue interface{}, falseValue interface{}) interface{} {
+				if condition {
+					return trueValue
+				}
+				return falseValue
+			}
 			tmpl, err := template.New("ROOT").Funcs(funcs).Parse(string(data))
 			if err != nil {
-				return err
-			}
-			if err := attachTemplates(tmpl, "tasks"); err != nil {
-				return err
+				return fmt.Errorf("failed to parse template %s: %s", p, err.Error())
 			}
 			if err := tmpl.ExecuteTemplate(&output, "ROOT", ResourceInstanceContext{
 				Instance: instance,
 				Params:   params,
+				Pipeline: pipeline,
 			}); err != nil {
-				return err
+				return fmt.Errorf("failed to render template %s: %s", p, err.Error())
 			}
 			var instanceRC ResourceConfig
 			if err := yaml.Unmarshal(output.Bytes(), &instanceRC); err != nil {
 				log.Error(output.String())
-				return err
+				return fmt.Errorf("failed to unmarshal final instance config of %s (%s): %s", instance, p, err.Error())
 			}
 			resource := Resource{}
 			if useName {
@@ -223,7 +217,7 @@ func loadResources(path string, log *logrus.Logger) ([]Resource, error) {
 
 		return nil
 	}); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to process paths: %s: %s", path, err.Error())
 	}
 	return resources, nil
 }

@@ -45,6 +45,25 @@ Sometimes you have jobs or resources that don't follow any template. In this
 case, simply use `meta.name` insteads of `meta.name_template` and don't include
 any `meta.instances`. This will generate just that one resource.
 
+## Working with multiple pipelines?
+
+If you're working with multiple pipelines, you can include with every template's
+meta field a list of pipelines it should be included in. Now simply use the
+`--pipeline` flag when launching piper to specify which pipeline should be
+generated.
+
+
+## Template functions
+
+In addition to those [functions provided by Go itself](https://golang.org/pkg/text/template/#hdr-Functions)
+the following functions are available within your templates:
+
+- `getParam <name> <default>` returns the value of the first parameter matching
+  the given name within the current instance.
+
+- `ite <condition> <valueIfTrue> <valueElse>` is basically `condition ?
+  valueIfTrue : valueElse`.
+
 ## Thanks
 
 Big thanks to [Netconomy](https://www.netconomy.net) for allowing me to work on

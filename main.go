@@ -44,11 +44,16 @@ func main() {
 
 	p := Pipeline{}
 
+	partials, err := template.ParseGlob("partials/*")
+	if err != nil {
+		log.WithError(err).Fatal("Could not parse partial templates")
+	}
+
 	wg := sync.WaitGroup{}
 	wg.Add(4)
 
 	go func() {
-		resources, err := loadResources("resources", selectedPipeline, log)
+		resources, err := loadResources("resources", selectedPipeline, partials, log)
 		if err != nil {
 			log.WithError(err).Fatal("Failed to load resources")
 		}
@@ -57,7 +62,7 @@ func main() {
 	}()
 
 	go func() {
-		resources, err := loadResources("jobs", selectedPipeline, log)
+		resources, err := loadResources("jobs", selectedPipeline, partials, log)
 		if err != nil {
 			log.WithError(err).Fatal("Failed to load jobs")
 		}
@@ -66,7 +71,7 @@ func main() {
 	}()
 
 	go func() {
-		resources, err := loadResources("resource_types", selectedPipeline, log)
+		resources, err := loadResources("resource_types", selectedPipeline, partials, log)
 		if err != nil {
 			log.WithError(err).Fatal("Failed to load resource_types")
 		}
@@ -75,7 +80,7 @@ func main() {
 	}()
 
 	go func() {
-		resources, err := loadResources("groups", selectedPipeline, log)
+		resources, err := loadResources("groups", selectedPipeline, partials, log)
 		if err != nil {
 			log.WithError(err).Fatal("Failed to load groups")
 		}
@@ -133,7 +138,19 @@ func generateWorldGroup(name string, p *Pipeline) Resource {
 	return r
 }
 
-func loadResources(path string, pipeline string, log *logrus.Logger) ([]Resource, error) {
+func indent(data string, offset int) string {
+	lines := make([]string, 0, 5)
+	for idx, line := range strings.Split(data, "\n") {
+		if idx == 0 {
+			lines = append(lines, line)
+			continue
+		}
+		lines = append(lines, fmt.Sprintf("%s%s", strings.Repeat(" ", offset), line))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func loadResources(path string, pipeline string, partials *template.Template, log *logrus.Logger) ([]Resource, error) {
 	resources := make([]Resource, 0, 10)
 	if err := filepath.Walk(path, func(p string, info os.FileInfo, err error) error {
 		log.Infof("Processing %s", p)
@@ -186,6 +203,14 @@ func loadResources(path string, pipeline string, log *logrus.Logger) ([]Resource
 					return trueValue
 				}
 				return falseValue
+			}
+			funcs["indent"] = indent
+			funcs["partial"] = func(name string, indentation int, context interface{}) (string, error) {
+				var out bytes.Buffer
+				if err := partials.ExecuteTemplate(&out, name, context); err != nil {
+					return "", err
+				}
+				return indent(out.String(), indentation), nil
 			}
 			tmpl, err := template.New("ROOT").Funcs(funcs).Parse(string(data))
 			if err != nil {

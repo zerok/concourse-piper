@@ -64,6 +64,55 @@ the following functions are available within your templates:
 - `ite <condition> <valueIfTrue> <valueElse>` is basically `condition ?
   valueIfTrue : valueElse`.
 
+- `partial <name> <offset> <context>` is explained in in more detail down below.
+
+
+## Partials
+
+**Status:** Experimental
+
+One of the goals of this project was to get rid of `task.file:` settings within
+our pipelines. The issue here is, that we cannot simply deploy a new
+shell-script or task configuration inside a pipeline and just test it on a
+single service if that service's source does include our `ci` folder.
+
+Using partials we can now inline the complete task configuration and deploy that
+without having to touch the source repository.
+
+Let's say we have a task which builds go applications:
+
+```
+platform: linux
+image_resource:
+  type: docker-image
+  source:
+    repository: golang
+    tag: 1.9
+run:
+  path: /bin/bash
+  args:
+  - "-exc"
+  - |
+    go build
+
+```
+
+We can now store that as `partials/build-go-app.yml` and use it like that within
+our pipeline:
+
+```
+jobs:
+- name: build
+  plan:
+  - task: build
+    config:
+      {{ partial "build-go-app.yml" 6 . }}
+```
+
+The `6` in there is necessary as we don't know within the partial template what
+level of indentation it should be rendered at in order to still procude valid
+YAML.
+
 ## Thanks
 
 Big thanks to [Netconomy](https://www.netconomy.net) for allowing me to work on

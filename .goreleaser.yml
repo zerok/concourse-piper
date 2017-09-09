@@ -1,0 +1,25 @@
+project_name: concourse-piper
+release:
+  github:
+    owner: zerok
+    name: concourse-piper
+brew:
+  install: bin.install "concourse-piper"
+builds:
+- goos:
+  - linux
+  - darwin
+  goarch:
+  - amd64
+  main: .
+  ldflags: -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+  binary: concourse-piper
+archive:
+  format: tar.gz
+  name_template: '{{ .Binary }}_{{.Version}}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{
+    .Arm }}{{ end }}'
+  files:
+  - LICENSE
+  - README.md
+snapshot:
+  name_template: SNAPSHOT-{{ .Commit }}

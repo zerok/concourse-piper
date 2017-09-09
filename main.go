@@ -17,6 +17,8 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+var version, commit, date string
+
 func findHeader(data []byte) ([]byte, error) {
 	idx := bytes.Index(data, []byte("data:\n"))
 	if idx == -1 {
@@ -31,15 +33,21 @@ func main() {
 	var worldGroupName string
 	var wantWorldGroup bool
 	var selectedPipeline string
+	var showVersion bool
 	pflag.StringVar(&output, "output", "pipeline.generated.yaml", "Path to an output file for the generated pipeline")
 	pflag.BoolVar(&wantWorldGroup, "worldgroup", false, "Generate a group containing all resources and jobs")
 	pflag.StringVar(&worldGroupName, "worldgroup-name", "WORLD", "Name of the group that contains all jobs and resources")
 	pflag.BoolVar(&verbose, "verbose", false, "Verbose logging")
 	pflag.StringVar(&selectedPipeline, "pipeline", "", "Specify the name of the pipeline you want to generate")
+	pflag.BoolVar(&showVersion, "version", false, "Show version information")
 	pflag.Parse()
 	log := logrus.New()
 	if verbose {
 		log.SetLevel(logrus.DebugLevel)
+	}
+	if showVersion {
+		fmt.Printf("Version: %s\nCommit: %s\nDate: %s\n", version, commit, date)
+		os.Exit(0)
 	}
 
 	p := Pipeline{}

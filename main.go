@@ -61,36 +61,36 @@ func main() {
 	wg.Add(4)
 
 	go func() {
-		resources, err := loadResources("resources", selectedPipeline, partials, log)
+		resources, e := loadResources("resources", selectedPipeline, partials, log)
 		if err != nil {
-			log.WithError(err).Fatal("Failed to load resources")
+			log.WithError(e).Fatal("Failed to load resources")
 		}
 		p.Resources = resources
 		wg.Done()
 	}()
 
 	go func() {
-		resources, err := loadResources("jobs", selectedPipeline, partials, log)
+		resources, e := loadResources("jobs", selectedPipeline, partials, log)
 		if err != nil {
-			log.WithError(err).Fatal("Failed to load jobs")
+			log.WithError(e).Fatal("Failed to load jobs")
 		}
 		p.Jobs = resources
 		wg.Done()
 	}()
 
 	go func() {
-		resources, err := loadResources("resource_types", selectedPipeline, partials, log)
+		resources, e := loadResources("resource_types", selectedPipeline, partials, log)
 		if err != nil {
-			log.WithError(err).Fatal("Failed to load resource_types")
+			log.WithError(e).Fatal("Failed to load resource_types")
 		}
 		p.ResourceTypes = resources
 		wg.Done()
 	}()
 
 	go func() {
-		resources, err := loadResources("groups", selectedPipeline, partials, log)
+		resources, e := loadResources("groups", selectedPipeline, partials, log)
 		if err != nil {
-			log.WithError(err).Fatal("Failed to load groups")
+			log.WithError(e).Fatal("Failed to load groups")
 		}
 		p.Groups = resources
 		wg.Done()
@@ -103,30 +103,37 @@ func main() {
 		p.Groups = append([]Resource{worldGroup}, p.Groups...)
 	}
 
+	if e := savePipeline(output, &p); e != nil {
+		log.WithError(e).Fatalf("Failed to write to %s: %s", output, e.Error())
+	}
+
+	displayPipelineStats(log, &p)
+}
+
+func savePipeline(f string, p *Pipeline) error {
 	out, err := yaml.Marshal(p)
 	if err != nil {
-		log.WithError(err).Fatal("Failed to encode pipeline")
+		return err
 	}
+	return ioutil.WriteFile(f, out, 0644)
+}
 
-	if err := ioutil.WriteFile(output, out, 0644); err != nil {
-		log.WithError(err).Fatalf("Failed to write to %s", output)
-	}
-
+func displayPipelineStats(log *logrus.Logger, p *Pipeline) {
 	log.Infof("Generated jobs (%d):", len(p.Jobs))
 	for _, r := range p.Jobs {
-		log.Infof(" - %s", r["name"])
+		log.Infof(" - %s", r)
 	}
 	log.Infof("Generated resource_types (%d):", len(p.ResourceTypes))
 	for _, r := range p.ResourceTypes {
-		log.Infof(" - %s", r["name"])
+		log.Infof(" - %s", r)
 	}
 	log.Infof("Generated resources (%d):", len(p.Resources))
 	for _, r := range p.Resources {
-		log.Infof(" - %s", r["name"])
+		log.Infof(" - %s", r)
 	}
 	log.Infof("Generated groups (%d):", len(p.Groups))
 	for _, r := range p.Groups {
-		log.Infof(" - %s", r["name"])
+		log.Infof(" - %s", r)
 	}
 }
 
@@ -158,101 +165,115 @@ func indent(data string, offset int) string {
 	return strings.Join(lines, "\n")
 }
 
+func ite(condition bool, trueValue interface{}, falseValue interface{}) interface{} {
+	if condition {
+		return trueValue
+	}
+	return falseValue
+}
+
 func loadResources(path string, pipeline string, partials *template.Template, log *logrus.Logger) ([]Resource, error) {
 	resources := make([]Resource, 0, 10)
-	if err := filepath.Walk(path, func(p string, info os.FileInfo, err error) error {
-		log.Infof("Processing %s", p)
-		var rc ResourceConfigHeader
+	if e := filepath.Walk(path, func(p string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
 		if !strings.HasSuffix(p, ".yml") {
 			return nil
 		}
+		log.Infof("Processing %s", p)
+		var rc ResourceConfigHeader
 		data, err := ioutil.ReadFile(p)
 		if err != nil {
 			return err
 		}
-		header, err := findHeader(data)
-		if err != nil {
-			log.Error(string(data))
-			return err
-		}
-		if err := yaml.Unmarshal(header, &rc); err != nil {
-			log.Error(string(data))
-			return fmt.Errorf("failed to unmarshal header of %s: %s", p, err)
-		}
-		var useName bool
-		if len(rc.Meta.Instances) == 0 && rc.Meta.Name != "" {
-			rc.Meta.Instances = []string{rc.Meta.Name}
-			useName = true
+		if err := parseHeader(&rc, data); err != nil {
+			return fmt.Errorf("failed to parse header of %s: %s", p, err.Error())
 		}
 		if !rc.isRelevantForPipeline(pipeline) {
 			return nil
 		}
-		for _, instance := range rc.Meta.Instances {
-			var output bytes.Buffer
-			var params []Param
-			ps, ok := rc.Meta.Params[instance]
-			if ok {
-				params = ps
-			} else {
-				params = make([]Param, 0, 0)
-			}
-			log.WithField("instance", instance).Debug(params)
-			funcs := template.FuncMap{}
-			funcs["getParam"] = func(name, def string) string {
-				for _, p := range params {
-					if p.Name == name {
-						return p.Value
-					}
-				}
-				return def
-			}
-			funcs["ite"] = func(condition bool, trueValue interface{}, falseValue interface{}) interface{} {
-				if condition {
-					return trueValue
-				}
-				return falseValue
-			}
-			funcs["indent"] = indent
-			funcs["partial"] = func(name string, indentation int, context interface{}) (string, error) {
-				var out bytes.Buffer
-				if err := partials.ExecuteTemplate(&out, name, context); err != nil {
-					return "", err
-				}
-				return indent(out.String(), indentation), nil
-			}
-			tmpl, err := template.New("ROOT").Funcs(funcs).Parse(string(data))
-			if err != nil {
-				return fmt.Errorf("failed to parse template %s: %s", p, err.Error())
-			}
-			if err := tmpl.ExecuteTemplate(&output, "ROOT", ResourceInstanceContext{
-				Instance: instance,
-				Params:   params,
-				Pipeline: pipeline,
-			}); err != nil {
-				return fmt.Errorf("failed to render template %s: %s", p, err.Error())
-			}
+		for _, instance := range rc.Meta.AllInstances() {
 			var instanceRC ResourceConfig
-			if err := yaml.Unmarshal(output.Bytes(), &instanceRC); err != nil {
-				log.Error(output.String())
-				return fmt.Errorf("failed to unmarshal final instance config of %s (%s): %s", instance, p, err.Error())
+			if err := generateInstance(&instanceRC, instance, p, data, rc, pipeline, partials, log); err != nil {
+				return fmt.Errorf("failed to generate instance %s: %s", instance, err.Error())
 			}
-			resource := Resource{}
-			if useName {
-				resource["name"] = instanceRC.Meta.Name
-			} else {
-				resource["name"] = instanceRC.Meta.NameTemplate
-			}
-			for k, v := range instanceRC.Data {
-				resource[k] = v
-			}
-			resources = append(resources, resource)
+			resources = append(resources, convertToResource(instanceRC, rc.Meta.Singleton()))
 		}
-
 		return nil
-	}); err != nil {
-		return nil, fmt.Errorf("failed to process paths: %s: %s", path, err.Error())
+	}); e != nil {
+		return nil, fmt.Errorf("failed to process paths: %s: %s", path, e.Error())
 	}
 	return resources, nil
+}
+
+func generateInstance(output *ResourceConfig, instance string, path string, data []byte, input ResourceConfigHeader, activePipeline string, partials *template.Template, log *logrus.Logger) error {
+	var buf bytes.Buffer
+	params, ok := input.Meta.Params[instance]
+	if !ok {
+		params = make([]Param, 0)
+	}
+	log.WithField("instance", instance).Debugf("Params: %v", params)
+	funcs := generateFuncMap(instance, params, partials)
+	tmpl, err := template.New("ROOT").Funcs(funcs).Parse(string(data))
+	if err != nil {
+		log.Error(string(data))
+		return fmt.Errorf("failed to parse template %s: %s", path, err.Error())
+	}
+	if err := tmpl.ExecuteTemplate(&buf, "ROOT", ResourceInstanceContext{
+		Instance: instance,
+		Params:   params,
+		Pipeline: activePipeline,
+	}); err != nil {
+		return fmt.Errorf("failed to render template %s: %s", path, err.Error())
+	}
+	if err := yaml.Unmarshal(buf.Bytes(), output); err != nil {
+		log.Error(buf.String())
+		return fmt.Errorf("failed to unmarshal final instance config of %s (%s): %s", instance, path, err.Error())
+	}
+	return nil
+}
+
+func convertToResource(rc ResourceConfig, singleton bool) Resource {
+	resource := Resource{}
+	resource["name"] = rc.Meta.NameTemplate
+	if singleton {
+		resource["name"] = rc.Meta.Name
+	}
+	for k, v := range rc.Data {
+		resource[k] = v
+	}
+	return resource
+}
+
+func parseHeader(rc *ResourceConfigHeader, data []byte) error {
+	header, err := findHeader(data)
+	if err != nil {
+		return err
+	}
+	return yaml.Unmarshal(header, &rc)
+}
+
+func generateFuncMap(instance string, params []Param, partials *template.Template) template.FuncMap {
+	funcs := template.FuncMap{}
+	funcs["getParam"] = func(name, def string) string {
+		for _, p := range params {
+			if p.Name == name {
+				return p.Value
+			}
+		}
+		return def
+	}
+	funcs["ite"] = ite
+	funcs["indent"] = indent
+	funcs["partial"] = func(name string, indentation int, context interface{}) (string, error) {
+		var out bytes.Buffer
+		if err := partials.ExecuteTemplate(&out, name, context); err != nil {
+			return "", err
+		}
+		return indent(out.String(), indentation), nil
+	}
+	return funcs
 }
 
 // loadPartials optionally loads partial templates from the

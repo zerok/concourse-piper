@@ -52,7 +52,7 @@ func main() {
 
 	p := Pipeline{}
 
-	partials, err := template.ParseGlob("partials/*")
+	partials, err := loadPartials()
 	if err != nil {
 		log.WithError(err).Fatal("Could not parse partial templates")
 	}
@@ -253,4 +253,18 @@ func loadResources(path string, pipeline string, partials *template.Template, lo
 		return nil, fmt.Errorf("failed to process paths: %s: %s", path, err.Error())
 	}
 	return resources, nil
+}
+
+// loadPartials optionally loads partial templates from the
+// "partials" folder.
+func loadPartials() (*template.Template, error) {
+	pat := "partials/*"
+	files, err := filepath.Glob(pat)
+	if err != nil {
+		return nil, err
+	}
+	if len(files) == 0 {
+		return template.New("PARTIALS"), nil
+	}
+	return template.ParseGlob("partials/*")
 }

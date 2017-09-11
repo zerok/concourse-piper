@@ -1,0 +1,6 @@
+---
+title: empty directory without any resources
+details: |
+  It should be valid to have just a simple empty folder and out of that
+  generate an empty pipeline.
+expectError: false

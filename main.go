@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -50,64 +51,100 @@ func main() {
 		os.Exit(0)
 	}
 
+	ctx := context.Background()
+
+	p, err := buildPipeline(ctx, selectedPipeline, ".", wantWorldGroup, worldGroupName, log)
+	if err != nil {
+		log.WithError(err).Fatal("Failed to build pipeline")
+	}
+
+	if e := savePipeline(output, p); e != nil {
+		log.WithError(e).Fatalf("Failed to write to %s: %s", output, e.Error())
+	}
+
+	displayPipelineStats(log, p)
+}
+
+func buildPipeline(ctx context.Context, selectedPipeline string, folder string, wantWorldGroup bool, worldGroupName string, log *logrus.Logger) (*Pipeline, error) {
 	p := Pipeline{}
 
 	partials, err := loadPartials()
 	if err != nil {
-		log.WithError(err).Fatal("Could not parse partial templates")
+		return nil, fmt.Errorf("could not parse partial templates: %s", err.Error())
 	}
 
 	wg := sync.WaitGroup{}
+	errorWg := sync.WaitGroup{}
+	errorWg.Add(1)
 	wg.Add(4)
+	cancelContext, cancel := context.WithCancel(ctx)
+	defer cancel()
+	errChan := make(chan error, 4)
+	go func() {
+		defer errorWg.Done()
+		for {
+			select {
+			case <-cancelContext.Done():
+				return
+			case e := <-errChan:
+				fmt.Println(e)
+				err = e
+				cancel()
+				return
+			}
+		}
+	}()
 
 	go func() {
-		resources, e := loadResources("resources", selectedPipeline, partials, log)
+		defer wg.Done()
+		resources, e := loadResources(cancelContext, filepath.Join(folder, "resources"), selectedPipeline, partials, log)
 		if err != nil {
-			log.WithError(e).Fatal("Failed to load resources")
+			errChan <- fmt.Errorf("failed to load resources: %s", e.Error())
+			return
 		}
 		p.Resources = resources
-		wg.Done()
 	}()
 
 	go func() {
-		resources, e := loadResources("jobs", selectedPipeline, partials, log)
-		if err != nil {
-			log.WithError(e).Fatal("Failed to load jobs")
+		defer wg.Done()
+		resources, e := loadResources(cancelContext, filepath.Join(folder, "jobs"), selectedPipeline, partials, log)
+		if e != nil {
+			errChan <- fmt.Errorf("failed to load jobs: %s", e.Error())
+			return
 		}
 		p.Jobs = resources
-		wg.Done()
 	}()
 
 	go func() {
-		resources, e := loadResources("resource_types", selectedPipeline, partials, log)
-		if err != nil {
-			log.WithError(e).Fatal("Failed to load resource_types")
+		defer wg.Done()
+		resources, e := loadResources(cancelContext, filepath.Join(folder, "resource_types"), selectedPipeline, partials, log)
+		if e != nil {
+			errChan <- fmt.Errorf("failed to load resource_types: %s", e.Error())
+			return
 		}
 		p.ResourceTypes = resources
-		wg.Done()
 	}()
 
 	go func() {
-		resources, e := loadResources("groups", selectedPipeline, partials, log)
+		defer wg.Done()
+		resources, e := loadResources(cancelContext, filepath.Join(folder, "groups"), selectedPipeline, partials, log)
 		if err != nil {
-			log.WithError(e).Fatal("Failed to load groups")
+			errChan <- fmt.Errorf("failed to load groups: %s", e.Error())
+			return
 		}
 		p.Groups = resources
-		wg.Done()
 	}()
 
 	wg.Wait()
+	cancel()
+	errorWg.Wait()
 
 	if wantWorldGroup {
 		worldGroup := generateWorldGroup(worldGroupName, &p)
 		p.Groups = append([]Resource{worldGroup}, p.Groups...)
 	}
 
-	if e := savePipeline(output, &p); e != nil {
-		log.WithError(e).Fatalf("Failed to write to %s: %s", output, e.Error())
-	}
-
-	displayPipelineStats(log, &p)
+	return &p, err
 }
 
 func savePipeline(f string, p *Pipeline) error {
@@ -172,11 +209,16 @@ func ite(condition bool, trueValue interface{}, falseValue interface{}) interfac
 	return falseValue
 }
 
-func loadResources(path string, pipeline string, partials *template.Template, log *logrus.Logger) ([]Resource, error) {
+func loadResources(ctx context.Context, path string, pipeline string, partials *template.Template, log *logrus.Logger) ([]Resource, error) {
 	resources := make([]Resource, 0, 10)
 	if e := filepath.Walk(path, func(p string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
 		}
 		if !strings.HasSuffix(p, ".yml") {
 			return nil
@@ -202,7 +244,9 @@ func loadResources(path string, pipeline string, partials *template.Template, lo
 		}
 		return nil
 	}); e != nil {
-		return nil, fmt.Errorf("failed to process paths: %s: %s", path, e.Error())
+		if !os.IsNotExist(e) {
+			return nil, fmt.Errorf("failed to process paths: %s: %s", path, e.Error())
+		}
 	}
 	return resources, nil
 }

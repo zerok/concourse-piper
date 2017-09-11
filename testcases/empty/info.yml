@@ -4,3 +4,8 @@ details: |
   It should be valid to have just a simple empty folder and out of that
   generate an empty pipeline.
 expectError: false
+result:
+  jobs: []
+  resources: []
+  resource_types: []
+  groups: []

@@ -4,5 +4,8 @@ details: |
   If you have just singletons, you can use `name` instead of `name_template`.
 expectError: false
 result:
+  resources: []
+  resource_types: []
+  groups: []
   jobs:
     - name: build

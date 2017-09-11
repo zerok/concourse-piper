@@ -1,0 +1,12 @@
+---
+title: Partial support
+details: |
+  Allow partials coming from the `partials` subdirectory.
+expectError: false
+result:
+  resources: []
+  resource_types: []
+  groups: []
+  jobs:
+    - name: build
+      file: some-other-file.yml

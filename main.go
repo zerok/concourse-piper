@@ -68,7 +68,7 @@ func main() {
 func buildPipeline(ctx context.Context, selectedPipeline string, folder string, wantWorldGroup bool, worldGroupName string, log *logrus.Logger) (*Pipeline, error) {
 	p := Pipeline{}
 
-	partials, err := loadPartials()
+	partials, err := loadPartials(folder)
 	if err != nil {
 		return nil, fmt.Errorf("could not parse partial templates: %s", err.Error())
 	}
@@ -322,8 +322,8 @@ func generateFuncMap(instance string, params []Param, partials *template.Templat
 
 // loadPartials optionally loads partial templates from the
 // "partials" folder.
-func loadPartials() (*template.Template, error) {
-	pat := "partials/*"
+func loadPartials(path string) (*template.Template, error) {
+	pat := filepath.Join(path, "partials", "*")
 	files, err := filepath.Glob(pat)
 	if err != nil {
 		return nil, err
@@ -331,5 +331,5 @@ func loadPartials() (*template.Template, error) {
 	if len(files) == 0 {
 		return template.New("PARTIALS"), nil
 	}
-	return template.ParseGlob("partials/*")
+	return template.ParseGlob(pat)
 }

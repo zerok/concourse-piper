@@ -1,0 +1,4 @@
+meta:
+  name: build
+data:
+  {{ partial "job-def.yml" 0 . }}

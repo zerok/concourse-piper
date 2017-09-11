@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v2"
 )
 
@@ -72,12 +73,17 @@ func TestBuildPipeline(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to load testinfo from %s: %s", testdir, err.Error())
 		}
-		_, err = buildPipeline(context.Background(), "", testdir, false, "", log)
+		result, err := buildPipeline(context.Background(), "", testdir, false, "", log)
 		if info.ExpectError && err == nil {
 			t.Fatalf("\n## %s:\n\n%s\n\n! An error was expected here", info.Title, info.Details)
 		}
 		if !info.ExpectError && err != nil {
 			t.Fatalf("\n## %s:\n\n%s\n\n! Unexpected error: %s", info.Title, info.Details, err.Error())
+		}
+		if err == nil {
+			if !assert.Equal(t, &info.Result, result, info.Title) {
+				t.FailNow()
+			}
 		}
 		if err != nil {
 			t.Fatalf("Failed to build pipeline from %s: %s", testdir, err.Error())

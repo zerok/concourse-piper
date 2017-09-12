@@ -8,16 +8,28 @@
   version = "v1.0.3"
 
 [[projects]]
-  branch = "master"
-  name = "github.com/alecthomas/template"
-  packages = [".","parse"]
-  revision = "a0175ee3bccc567396460bf5acd36800cb10c49c"
+  name = "github.com/davecgh/go-spew"
+  packages = ["spew"]
+  revision = "346938d642f2ec3594ed81d874461961cd0faa76"
+  version = "v1.1.0"
+
+[[projects]]
+  name = "github.com/pmezard/go-difflib"
+  packages = ["difflib"]
+  revision = "792786c7400a136282c1664665ae0a8db921c6c2"
+  version = "v1.0.0"
 
 [[projects]]
   name = "github.com/spf13/pflag"
   packages = ["."]
   revision = "e57e3eeb33f795204c1ca35f56c44f83227c6e66"
   version = "v1.0.0"
+
+[[projects]]
+  name = "github.com/stretchr/testify"
+  packages = ["assert"]
+  revision = "69483b4bd14f5845b5a1e55bca19e954e827f1d0"
+  version = "v1.1.4"
 
 [[projects]]
   branch = "master"
@@ -40,6 +52,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "5e413fc9c0765fe638253d6b9cb77e5f650d87fe8764888c44877eb33ebdb2b8"
+  inputs-digest = "afb14b2ba693e25d7d58f0464d0ec9bc5bc0cb37a12059bd5e7168558f1ce062"
   solver-name = "gps-cdcl"
   solver-version = 1

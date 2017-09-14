@@ -8,5 +8,7 @@ result:
   resource_types: []
   groups: []
   jobs:
-    - name: build
-      file: some-other-file.yml
+    - name: build-a
+      file: some-other-file-a.yml
+    - name: build-b
+      file: some-other-file-b.yml

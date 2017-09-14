@@ -68,7 +68,7 @@ func main() {
 func buildPipeline(ctx context.Context, selectedPipeline string, folder string, wantWorldGroup bool, worldGroupName string, log *logrus.Logger) (*Pipeline, error) {
 	p := Pipeline{}
 
-	partials, err := loadPartials(folder)
+	partials, err := loadPartials(filepath.Join(folder, "partials"))
 	if err != nil {
 		return nil, fmt.Errorf("could not parse partial templates: %s", err.Error())
 	}
@@ -312,7 +312,13 @@ func generateFuncMap(instance string, params []Param, partials *template.Templat
 	funcs["indent"] = indent
 	funcs["partial"] = func(name string, indentation int, context interface{}) (string, error) {
 		var out bytes.Buffer
-		if err := partials.ExecuteTemplate(&out, name, context); err != nil {
+		innerFuncMap := template.FuncMap{}
+		innerFuncMap["getParam"] = funcs["getParam"]
+		tmpls, err := partials.Clone()
+		if err != nil {
+			return "", err
+		}
+		if err := tmpls.Funcs(innerFuncMap).ExecuteTemplate(&out, name, context); err != nil {
 			return "", err
 		}
 		return indent(out.String(), indentation), nil
@@ -323,13 +329,21 @@ func generateFuncMap(instance string, params []Param, partials *template.Templat
 // loadPartials optionally loads partial templates from the
 // "partials" folder.
 func loadPartials(path string) (*template.Template, error) {
-	pat := filepath.Join(path, "partials", "*")
+	funcs := template.FuncMap{}
+	funcs["ite"] = ite
+	funcs["indent"] = indent
+
+	// This will be overloaded on execution time
+	funcs["getParam"] = func() string { return "" }
+
+	pat := filepath.Join(path, "*")
 	files, err := filepath.Glob(pat)
+	tmpl := template.New("PARTIALS").Funcs(funcs)
 	if err != nil {
 		return nil, err
 	}
 	if len(files) == 0 {
-		return template.New("PARTIALS"), nil
+		return tmpl, nil
 	}
-	return template.ParseGlob(pat)
+	return tmpl.ParseGlob(pat)
 }

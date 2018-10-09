@@ -308,17 +308,35 @@ func generateFuncMap(instance string, params []Param, partials *template.Templat
 		}
 		return def
 	}
+	funcs["list"] = func(elems ...interface{}) []interface{} {
+		return elems
+	}
 	funcs["ite"] = ite
 	funcs["indent"] = indent
-	funcs["partial"] = func(name string, indentation int, context interface{}) (string, error) {
+	funcs["partial"] = func(name string, indentation int, context ResourceInstanceContext, kwargs ...interface{}) (string, error) {
 		var out bytes.Buffer
+		argsMap := make(map[string]interface{})
+		key := ""
+		for idx, arg := range kwargs {
+			if idx%2 == 0 {
+				key = arg.(string)
+			} else {
+				argsMap[key] = arg
+			}
+		}
+		localContext := context.Clone()
+		localContext.Args = argsMap
 		innerFuncMap := template.FuncMap{}
 		innerFuncMap["getParam"] = funcs["getParam"]
+		innerFuncMap["ite"] = funcs["ite"]
+		innerFuncMap["partial"] = funcs["partial"]
+		innerFuncMap["list"] = funcs["list"]
+		innerFuncMap["indent"] = funcs["indent"]
 		tmpls, err := partials.Clone()
 		if err != nil {
 			return "", err
 		}
-		if err := tmpls.Funcs(innerFuncMap).ExecuteTemplate(&out, name, context); err != nil {
+		if err := tmpls.Funcs(innerFuncMap).ExecuteTemplate(&out, name, localContext); err != nil {
 			return "", err
 		}
 		return indent(out.String(), indentation), nil
@@ -329,16 +347,10 @@ func generateFuncMap(instance string, params []Param, partials *template.Templat
 // loadPartials optionally loads partial templates from the
 // "partials" folder.
 func loadPartials(path string) (*template.Template, error) {
-	funcs := template.FuncMap{}
-	funcs["ite"] = ite
-	funcs["indent"] = indent
-
-	// This will be overloaded on execution time
-	funcs["getParam"] = func() string { return "" }
-
 	pat := filepath.Join(path, "*")
 	files, err := filepath.Glob(pat)
-	tmpl := template.New("PARTIALS").Funcs(funcs)
+	tmpl := template.New("PARTIALS")
+	tmpl.Funcs(generateFuncMap("", []Param{}, tmpl))
 	if err != nil {
 		return nil, err
 	}

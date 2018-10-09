@@ -90,3 +90,24 @@ func TestBuildPipeline(t *testing.T) {
 		}
 	}
 }
+
+func TestNestedPartials(t *testing.T) {
+	tmpls, err := loadPartials("fixtures/nested-partials")
+	assert.NoError(t, err)
+	assert.NotNil(t, tmpls)
+	out := &ResourceConfig{}
+	logger := logrus.New()
+	err = generateInstance(out, "some-instance", "some-path", []byte(`{{ partial "outer.txt" 4 . }}`), ResourceConfigHeader{}, "active-pipeline", tmpls, logger)
+	assert.NoError(t, err)
+	assert.Equal(t, out.Data["value"], "INNER")
+}
+
+func TestPartialsWithArgs(t *testing.T) {
+	tmpls, err := loadPartials("fixtures/partials-with-args")
+	assert.NoError(t, err)
+	assert.NotNil(t, tmpls)
+	out := &ResourceConfig{}
+	logger := logrus.New()
+	err = generateInstance(out, "some-instance", "some-path", []byte(`{{ partial "outer.txt" 4 . }}`), ResourceConfigHeader{}, "active-pipeline", tmpls, logger)
+	assert.NoError(t, err)
+}

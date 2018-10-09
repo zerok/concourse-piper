@@ -77,6 +77,19 @@ type ResourceInstanceContext struct {
 	Instance string
 	Params   []Param
 	Pipeline string
+	Args     map[string]interface{}
+}
+
+func (rc *ResourceInstanceContext) Clone() ResourceInstanceContext {
+	params := make([]Param, 0, len(rc.Params))
+	for _, p := range rc.Params {
+		params = append(params, p)
+	}
+	return ResourceInstanceContext{
+		Pipeline: rc.Pipeline,
+		Params:   params,
+		Instance: rc.Instance,
+	}
 }
 
 // Pipeline is the data structure used for rendering out the

@@ -113,6 +113,17 @@ The `6` in there is necessary as we don't know within the partial template what
 level of indentation it should be rendered at in order to still procude valid
 YAML.
 
+Additionally, you can pass keyword arguments into the partial as a list with
+the uneven argument being the key and its successor being the associated value:
+
+```
+{{ partial "build-go-app.yml" 6 . "some-key" "some-value" }}
+```
+
+Inside the partial the arguments are exposed through the `.Args` field which is
+a `map[string]interface{}`.
+
+
 ## Thanks
 
 Big thanks to [Netconomy](https://www.netconomy.net) for allowing me to work on

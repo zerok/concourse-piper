@@ -1,0 +1,1 @@
+{{ partial "inner.txt" 0 . }}

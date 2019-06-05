@@ -9,13 +9,11 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"text/template"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/spf13/pflag"
-
-	"text/template"
-
-	"gopkg.in/yaml.v2"
+	yaml "gopkg.in/yaml.v2"
 )
 
 var version, commit, date string
@@ -98,7 +96,7 @@ func buildPipeline(ctx context.Context, selectedPipeline string, folder string, 
 	go func() {
 		defer wg.Done()
 		resources, e := loadResources(cancelContext, filepath.Join(folder, "resources"), selectedPipeline, partials, log)
-		if err != nil {
+		if e != nil {
 			errChan <- fmt.Errorf("failed to load resources: %s", e.Error())
 			return
 		}
@@ -244,9 +242,7 @@ func loadResources(ctx context.Context, path string, pipeline string, partials *
 		}
 		return nil
 	}); e != nil {
-		if !os.IsNotExist(e) {
-			return nil, fmt.Errorf("failed to process paths: %s: %s", path, e.Error())
-		}
+		return nil, fmt.Errorf("failed to process paths: %s: %s", path, e.Error())
 	}
 	return resources, nil
 }

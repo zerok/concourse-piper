@@ -8,7 +8,8 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
-	"gopkg.in/yaml.v2"
+	"github.com/stretchr/testify/require"
+	yaml "gopkg.in/yaml.v2"
 )
 
 type testInfo struct {
@@ -64,30 +65,26 @@ func TestBuildPipeline(t *testing.T) {
 	files, err := ioutil.ReadDir("testcases")
 	log := logrus.New()
 	log.SetLevel(logrus.ErrorLevel)
-	if err != nil {
-		t.Fatalf("Failed to read from testcases directory: %s", err.Error())
-	}
+	require.NoError(t, err)
 	for _, testcase := range files {
-		testdir := filepath.Join("testcases", testcase.Name())
-		info, err := loadTestInfo(filepath.Join(testdir, "info.yml"))
-		if err != nil {
-			t.Fatalf("Failed to load testinfo from %s: %s", testdir, err.Error())
-		}
-		result, err := buildPipeline(context.Background(), "", testdir, false, "", log)
-		if info.ExpectError && err == nil {
-			t.Fatalf("\n## %s:\n\n%s\n\n! An error was expected here", info.Title, info.Details)
-		}
-		if !info.ExpectError && err != nil {
-			t.Fatalf("\n## %s:\n\n%s\n\n! Unexpected error: %s", info.Title, info.Details, err.Error())
-		}
-		if err == nil {
-			if !assert.Equal(t, &info.Result, result, info.Title) {
-				t.FailNow()
+		t.Run(testcase.Name(), func(t *testing.T) {
+			testdir := filepath.Join("testcases", testcase.Name())
+			info, err := loadTestInfo(filepath.Join(testdir, "info.yml"))
+			require.NoError(t, err)
+			result, err := buildPipeline(context.Background(), "", testdir, false, "", log)
+			if info.ExpectError && err == nil {
+				t.Fatalf("\n## %s:\n\n%s\n\n! An error was expected here", info.Title, info.Details)
 			}
-		}
-		if err != nil {
-			t.Fatalf("Failed to build pipeline from %s: %s", testdir, err.Error())
-		}
+			if !info.ExpectError && err != nil {
+				t.Fatalf("\n## %s:\n\n%s\n\n! Unexpected error: %s", info.Title, info.Details, err.Error())
+			}
+			if err == nil {
+				require.Equal(t, &info.Result, result, info.Title)
+			}
+			if err != nil {
+				t.Fatalf("Failed to build pipeline from %s: %s", testdir, err.Error())
+			}
+		})
 	}
 }
 

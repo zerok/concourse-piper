@@ -126,7 +126,7 @@ func buildPipeline(ctx context.Context, selectedPipeline string, folder string, 
 	go func() {
 		defer wg.Done()
 		resources, e := loadResources(cancelContext, filepath.Join(folder, "groups"), selectedPipeline, partials, log)
-		if err != nil {
+		if e != nil {
 			errChan <- fmt.Errorf("failed to load groups: %s", e.Error())
 			return
 		}
@@ -242,6 +242,9 @@ func loadResources(ctx context.Context, path string, pipeline string, partials *
 		}
 		return nil
 	}); e != nil {
+		if os.IsNotExist(e) {
+			return []Resource{}, nil
+		}
 		return nil, fmt.Errorf("failed to process paths: %s: %s", path, e.Error())
 	}
 	return resources, nil

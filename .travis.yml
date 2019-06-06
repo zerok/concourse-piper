@@ -1,5 +1,6 @@
 language: go
-
+env:
+  - GO111MODULE=on
 go:
-  - 1.9.x
-script: go test ./...
+  - 1.12.x
+script: go test -v ./...

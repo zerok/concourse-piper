@@ -3,10 +3,10 @@ package main
 import (
 	"context"
 	"io/ioutil"
-	"path/filepath"
 	"testing"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	yaml "gopkg.in/yaml.v2"
@@ -62,34 +62,106 @@ func TestFindHeader(t *testing.T) {
 }
 
 func TestBuildPipeline(t *testing.T) {
-	files, err := ioutil.ReadDir("testcases")
+	tests := []struct {
+		name           string
+		fillFS         func(afero.Fs)
+		expectedResult *Pipeline
+		expectedError  bool
+	}{
+		{
+			name: "empty",
+			fillFS: func(fs afero.Fs) {
+				fs.Mkdir("/", 0700)
+				fs.Mkdir("/jobs", 0700)
+				fs.Mkdir("/resources", 0700)
+				fs.Mkdir("/resource_types", 0700)
+			},
+			expectedResult: &Pipeline{
+				Groups:        []Resource{},
+				Resources:     []Resource{},
+				ResourceTypes: []Resource{},
+				Jobs:          []Resource{},
+			},
+			expectedError: false,
+		}, {
+			name: "simple",
+			fillFS: func(fs afero.Fs) {
+				fs.Mkdir("/", 0700)
+				fs.Mkdir("/jobs", 0700)
+				afero.WriteFile(fs, "/jobs/build.yml", []byte("meta:\n  name: build\ndata:\n"), 0600)
+			},
+			expectedResult: &Pipeline{
+				Groups:        []Resource{},
+				Resources:     []Resource{},
+				ResourceTypes: []Resource{},
+				Jobs: []Resource{
+					{"name": "build"},
+				},
+			},
+			expectedError: false,
+		}, {
+			name: "partials",
+			fillFS: func(fs afero.Fs) {
+				fs.Mkdir("/", 0700)
+				fs.Mkdir("/jobs", 0700)
+				fs.Mkdir("/partials", 0700)
+				afero.WriteFile(fs, "/partials/job-def.yml", []byte("file: some-other-file-{{ getParam \"param\" \"<nil>\" }}.yml"), 0600)
+				afero.WriteFile(fs, "/jobs/build.yml", []byte(`meta:
+  name_template: build-{{ .Instance }}
+  instances:
+  - a
+  - b
+  params:
+    a:
+    - name: param
+      value: a
+    b:
+    - name: param
+      value: b
+data:
+  {{ partial "job-def.yml" 0 . }}`), 0600)
+			},
+			expectedResult: &Pipeline{
+				Groups:        []Resource{},
+				Resources:     []Resource{},
+				ResourceTypes: []Resource{},
+				Jobs: []Resource{
+					{
+						"name": "build-a",
+						"file": "some-other-file-a.yml",
+					},
+					{
+						"name": "build-b",
+						"file": "some-other-file-b.yml",
+					},
+				},
+			},
+			expectedError: false,
+		},
+	}
+	ctx := context.Background()
 	log := logrus.New()
 	log.SetLevel(logrus.ErrorLevel)
-	require.NoError(t, err)
-	for _, testcase := range files {
-		t.Run(testcase.Name(), func(t *testing.T) {
-			testdir := filepath.Join("testcases", testcase.Name())
-			info, err := loadTestInfo(filepath.Join(testdir, "info.yml"))
-			require.NoError(t, err)
-			result, err := buildPipeline(context.Background(), "", testdir, false, "", log)
-			if info.ExpectError && err == nil {
-				t.Fatalf("\n## %s:\n\n%s\n\n! An error was expected here", info.Title, info.Details)
-			}
-			if !info.ExpectError && err != nil {
-				t.Fatalf("\n## %s:\n\n%s\n\n! Unexpected error: %s", info.Title, info.Details, err.Error())
-			}
-			if err == nil {
-				require.Equal(t, &info.Result, result, info.Title)
-			}
-			if err != nil {
-				t.Fatalf("Failed to build pipeline from %s: %s", testdir, err.Error())
+	for _, testcase := range tests {
+		t.Run(testcase.name, func(t *testing.T) {
+			fs := afero.NewMemMapFs()
+			testcase.fillFS(fs)
+			result, err := buildPipeline(ctx, "", fs, "/", false, "", log)
+			if testcase.expectedError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, testcase.expectedResult, result)
 			}
 		})
 	}
 }
 
 func TestNestedPartials(t *testing.T) {
-	tmpls, err := loadPartials("fixtures/nested-partials")
+	fs := afero.NewMemMapFs()
+	afero.WriteFile(fs, "/inner.txt", []byte("data:\n  value: INNER"), 0600)
+	afero.WriteFile(fs, "/outer.txt", []byte("{{ partial \"inner.txt\" 0 . }}"), 0600)
+	tmpls, err := loadPartials(fs, "/")
 	assert.NoError(t, err)
 	assert.NotNil(t, tmpls)
 	out := &ResourceConfig{}
@@ -100,7 +172,10 @@ func TestNestedPartials(t *testing.T) {
 }
 
 func TestPartialsWithArgs(t *testing.T) {
-	tmpls, err := loadPartials("fixtures/partials-with-args")
+	fs := afero.NewMemMapFs()
+	afero.WriteFile(fs, "/inner.txt", []byte("data:\n  value: {{ index .Args \"value\" }}"), 0600)
+	afero.WriteFile(fs, "/outer.txt", []byte("{{ partial \"inner.txt\" 0 . \"value\" \"INNER\" }}"), 0600)
+	tmpls, err := loadPartials(fs, "/")
 	assert.NoError(t, err)
 	assert.NotNil(t, tmpls)
 	out := &ResourceConfig{}

@@ -12,6 +12,7 @@ import (
 	"text/template"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/spf13/afero"
 	"github.com/spf13/pflag"
 	yaml "gopkg.in/yaml.v2"
 )
@@ -50,8 +51,9 @@ func main() {
 	}
 
 	ctx := context.Background()
+	fs := afero.NewOsFs()
 
-	p, err := buildPipeline(ctx, selectedPipeline, ".", wantWorldGroup, worldGroupName, log)
+	p, err := buildPipeline(ctx, selectedPipeline, fs, ".", wantWorldGroup, worldGroupName, log)
 	if err != nil {
 		log.WithError(err).Fatal("Failed to build pipeline")
 	}
@@ -63,10 +65,10 @@ func main() {
 	displayPipelineStats(log, p)
 }
 
-func buildPipeline(ctx context.Context, selectedPipeline string, folder string, wantWorldGroup bool, worldGroupName string, log *logrus.Logger) (*Pipeline, error) {
+func buildPipeline(ctx context.Context, selectedPipeline string, fs afero.Fs, folder string, wantWorldGroup bool, worldGroupName string, log *logrus.Logger) (*Pipeline, error) {
 	p := Pipeline{}
 
-	partials, err := loadPartials(filepath.Join(folder, "partials"))
+	partials, err := loadPartials(fs, filepath.Join(folder, "partials"))
 	if err != nil {
 		return nil, fmt.Errorf("could not parse partial templates: %s", err.Error())
 	}
@@ -95,7 +97,7 @@ func buildPipeline(ctx context.Context, selectedPipeline string, folder string, 
 
 	go func() {
 		defer wg.Done()
-		resources, e := loadResources(cancelContext, filepath.Join(folder, "resources"), selectedPipeline, partials, log)
+		resources, e := loadResources(cancelContext, fs, filepath.Join(folder, "resources"), selectedPipeline, partials, log)
 		if e != nil {
 			errChan <- fmt.Errorf("failed to load resources: %s", e.Error())
 			return
@@ -105,7 +107,7 @@ func buildPipeline(ctx context.Context, selectedPipeline string, folder string, 
 
 	go func() {
 		defer wg.Done()
-		resources, e := loadResources(cancelContext, filepath.Join(folder, "jobs"), selectedPipeline, partials, log)
+		resources, e := loadResources(cancelContext, fs, filepath.Join(folder, "jobs"), selectedPipeline, partials, log)
 		if e != nil {
 			errChan <- fmt.Errorf("failed to load jobs: %s", e.Error())
 			return
@@ -115,7 +117,7 @@ func buildPipeline(ctx context.Context, selectedPipeline string, folder string, 
 
 	go func() {
 		defer wg.Done()
-		resources, e := loadResources(cancelContext, filepath.Join(folder, "resource_types"), selectedPipeline, partials, log)
+		resources, e := loadResources(cancelContext, fs, filepath.Join(folder, "resource_types"), selectedPipeline, partials, log)
 		if e != nil {
 			errChan <- fmt.Errorf("failed to load resource_types: %s", e.Error())
 			return
@@ -125,7 +127,7 @@ func buildPipeline(ctx context.Context, selectedPipeline string, folder string, 
 
 	go func() {
 		defer wg.Done()
-		resources, e := loadResources(cancelContext, filepath.Join(folder, "groups"), selectedPipeline, partials, log)
+		resources, e := loadResources(cancelContext, fs, filepath.Join(folder, "groups"), selectedPipeline, partials, log)
 		if e != nil {
 			errChan <- fmt.Errorf("failed to load groups: %s", e.Error())
 			return
@@ -207,9 +209,9 @@ func ite(condition bool, trueValue interface{}, falseValue interface{}) interfac
 	return falseValue
 }
 
-func loadResources(ctx context.Context, path string, pipeline string, partials *template.Template, log *logrus.Logger) ([]Resource, error) {
+func loadResources(ctx context.Context, fs afero.Fs, path string, pipeline string, partials *template.Template, log *logrus.Logger) ([]Resource, error) {
 	resources := make([]Resource, 0, 10)
-	if e := filepath.Walk(path, func(p string, info os.FileInfo, err error) error {
+	if e := afero.Walk(fs, path, func(p string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -223,7 +225,7 @@ func loadResources(ctx context.Context, path string, pipeline string, partials *
 		}
 		log.Infof("Processing %s", p)
 		var rc ResourceConfigHeader
-		data, err := ioutil.ReadFile(p)
+		data, err := afero.ReadFile(fs, p)
 		if err != nil {
 			return err
 		}
@@ -345,9 +347,9 @@ func generateFuncMap(instance string, params []Param, partials *template.Templat
 
 // loadPartials optionally loads partial templates from the
 // "partials" folder.
-func loadPartials(path string) (*template.Template, error) {
+func loadPartials(fs afero.Fs, path string) (*template.Template, error) {
 	pat := filepath.Join(path, "*")
-	files, err := filepath.Glob(pat)
+	files, err := afero.Glob(fs, pat)
 	tmpl := template.New("PARTIALS")
 	tmpl.Funcs(generateFuncMap("", []Param{}, tmpl))
 	if err != nil {
@@ -356,5 +358,14 @@ func loadPartials(path string) (*template.Template, error) {
 	if len(files) == 0 {
 		return tmpl, nil
 	}
-	return tmpl.ParseGlob(pat)
+	var data []byte
+	for _, filename := range files {
+		fn := filepath.Base(filename)
+		data, err = afero.ReadFile(fs, filename)
+		if err != nil {
+			return nil, err
+		}
+		_, err = tmpl.New(fn).Parse(string(data))
+	}
+	return tmpl, err
 }

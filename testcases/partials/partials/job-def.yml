@@ -1,1 +1,0 @@
-file: some-other-file-{{ getParam "param" "<nil>" }}.yml

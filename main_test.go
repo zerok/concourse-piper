@@ -100,6 +100,22 @@ func TestBuildPipeline(t *testing.T) {
 			},
 			expectedError: false,
 		}, {
+			name: "simple-with-yaml",
+			fillFS: func(fs afero.Fs) {
+				fs.Mkdir("/", 0700)
+				fs.Mkdir("/jobs", 0700)
+				afero.WriteFile(fs, "/jobs/build.yaml", []byte("meta:\n  name: build\ndata:\n"), 0600)
+			},
+			expectedResult: &Pipeline{
+				Groups:        []Resource{},
+				Resources:     []Resource{},
+				ResourceTypes: []Resource{},
+				Jobs: []Resource{
+					{"name": "build"},
+				},
+			},
+			expectedError: false,
+		}, {
 			name: "partials",
 			fillFS: func(fs afero.Fs) {
 				fs.Mkdir("/", 0700)

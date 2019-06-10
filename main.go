@@ -220,7 +220,7 @@ func loadResources(ctx context.Context, fs afero.Fs, path string, pipeline strin
 			return ctx.Err()
 		default:
 		}
-		if !strings.HasSuffix(p, ".yml") {
+		if !strings.HasSuffix(p, ".yml") && !strings.HasSuffix(p, ".yaml") {
 			return nil
 		}
 		log.Infof("Processing %s", p)

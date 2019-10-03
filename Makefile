@@ -1,6 +1,12 @@
-all: test
+all: concourse-piper
+
+concourse-piper: $(shell find . -name '*.go') go.mod
+	go build -o $@
 
 test:
 	go test -v ./...
 
-.PHONY: test
+clean:
+	rm -f concourse-piper
+
+.PHONY: test clean

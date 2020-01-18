@@ -4,9 +4,9 @@ concourse-piper: $(shell find . -name '*.go') go.mod
 	go build -o $@
 
 test:
-	go test -v ./...
+	go test -v ./... -cover
 
 clean:
 	rm -f concourse-piper
 
-.PHONY: test clean
+.PHONY: test clean all

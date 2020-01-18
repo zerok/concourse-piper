@@ -7,7 +7,6 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/spf13/afero"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	yaml "gopkg.in/yaml.v2"
 )
@@ -178,13 +177,13 @@ func TestNestedPartials(t *testing.T) {
 	afero.WriteFile(fs, "/inner.txt", []byte("data:\n  value: INNER"), 0600)
 	afero.WriteFile(fs, "/outer.txt", []byte("{{ partial \"inner.txt\" 0 . }}"), 0600)
 	tmpls, err := loadPartials(fs, "/")
-	assert.NoError(t, err)
-	assert.NotNil(t, tmpls)
+	require.NoError(t, err)
+	require.NotNil(t, tmpls)
 	out := &ResourceConfig{}
 	logger := logrus.New()
 	err = generateInstance(out, "some-instance", "some-path", []byte(`{{ partial "outer.txt" 4 . }}`), ResourceConfigHeader{}, "active-pipeline", tmpls, logger)
-	assert.NoError(t, err)
-	assert.Equal(t, out.Data["value"], "INNER")
+	require.NoError(t, err)
+	require.Equal(t, out.Data["value"], "INNER")
 }
 
 func TestPartialsWithArgs(t *testing.T) {
@@ -192,10 +191,10 @@ func TestPartialsWithArgs(t *testing.T) {
 	afero.WriteFile(fs, "/inner.txt", []byte("data:\n  value: {{ index .Args \"value\" }}"), 0600)
 	afero.WriteFile(fs, "/outer.txt", []byte("{{ partial \"inner.txt\" 0 . \"value\" \"INNER\" }}"), 0600)
 	tmpls, err := loadPartials(fs, "/")
-	assert.NoError(t, err)
-	assert.NotNil(t, tmpls)
+	require.NoError(t, err)
+	require.NotNil(t, tmpls)
 	out := &ResourceConfig{}
 	logger := logrus.New()
 	err = generateInstance(out, "some-instance", "some-path", []byte(`{{ partial "outer.txt" 4 . }}`), ResourceConfigHeader{}, "active-pipeline", tmpls, logger)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 }

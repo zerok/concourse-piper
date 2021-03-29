@@ -1,7 +1,7 @@
 # Concourse Piper
 
-**Disclaimer:** This is just a very early proof-of-concept. Use at your own
-risk!
+**EOL:** I no longer use Concourse for CI/CD and so I can no longer maintain
+this repository.
 
 If you're working with larger pipelines in concourse.ci you most likely also
 have lots of similar looking jobs. This is where concourse-piper comes in. It
